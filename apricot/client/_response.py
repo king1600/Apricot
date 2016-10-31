@@ -5,6 +5,7 @@ try: import ujson as json
 except: import json
 
 from ._parser import ApricotParser
+from ..utils import _BREAK, gzipDecode
 
 class ApricotHttpResponse(object):
 	def __init__(self, httpData=b'', aUrl=None):
@@ -28,13 +29,11 @@ class ApricotHttpResponse(object):
 	def feed(self):
 		self.parser = ApricotParser('response')
 		self.parser.feed(self.data)
-		del self.data
 		self.set_attributes()
 
 	async def feed_async(self):
 		self.parser = ApricotParser('response')
 		await self.parser.feed_async(self.data)
-		del self.data
 		self.set_attributes()
 
 	def set_attributes(self):
@@ -43,23 +42,39 @@ class ApricotHttpResponse(object):
 		self.version    = self.parser.http_ver
 		self.status     = self.parser.status
 		self.keep_alive = self.parser.keep_alive
+		self.reason     = b' '.join(self.data.split(_BREAK)[0].split()[2:]).decode()
+
 
 		charset = 'utf-8'
-
 		if self._body is not None:
+
+			# attempt to get charset
 			if 'Content-Type' in self.headers:
 				c_type = self.headers['Content-Type']
 				if 'charset=' in c_type:
 					charset = c_type.split('charset=')[1].split(';')[0]
-				if 'json' in c_type:
-					try:
-						self._json = json.loads(self._body.decode())
-					except Exception as e:
-						self._json = None
+
+			# attemp to unzip encoding
 			try:
-				self._text = self._body.decode(str(charset).lower())
+				if 'Content-Encoding' in self.headers:
+					if 'gzip' in self.headers['Content-Encoding']:
+						self._text = (gzipDecode(self._body)).decode(charset)
+				if not isinstance(self._text, str):
+					self._text = self._body.decode(str(charset).lower())
 			except:
 				self._text = self._body.decode('utf-8')
+
+			# attempt to get json info
+			if 'Content-Type' in self.headers:
+				if 'json' in self.headers['Content-Type']:
+					try:
+						raw_text = self._text
+						if raw_text.startswith('[') and raw_text.endswith(']'):
+							raw_text = raw_text[1:-1]
+						self._json = json.loads(raw_text)
+					except Exception as e:
+						self._json = None
+						
 
 	async def json(self): return self._json
 

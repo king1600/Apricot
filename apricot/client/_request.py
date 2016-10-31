@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 #! python3
 
-try: import ujson as json
-except: import json
-
-from urllib.parse import unquote
+from ..utils import json
 from ._parser import ApricotParser
 
 class ApricotRequest(object):

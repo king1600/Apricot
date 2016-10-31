@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 #! python3
 
+import ssl
+import certifi
 import asyncio
-try: import ujson as json
-except: import json
 from ._request import ApricotRequest
 from ._protocol import ApricotProtocol
 from ._response import ApricotHttpResponse
 from ..utils import ApricotUrl, BREAK, REQUEST_HEADERS
-from ..utils import generateID_async
+from ..utils import generateID_async, json, urlencode
 
 class ApricotSession(object):
 	''' Apricot Request Session '''
@@ -18,6 +18,9 @@ class ApricotSession(object):
 		self.connections = {} # categorize all ApricotProtocols by uuid
 		self.conn_ready  = {} # hold Events to check protocol ready by uuid
 		self.isClosed    = False
+
+		self.ca_path = certifi.where()
+		self.ca_auth = ssl.Purpose.CLIENT_AUTH
 
 	def __del__(self):
 		self.close()
@@ -46,14 +49,17 @@ class ApricotSession(object):
 
 	### HTTP Requests ###
 
-	async def get(self, url, params={}, headers={}, data=None):
-		return await self.do_request(url, "GET", params, headers, data, None)
+	async def get(self, url, params={}, headers={}, data=None, allow_redirects=True):
+		return await self.do_request(
+			url, "GET", params, headers, data, None, allow_redirects)
 
 	async def post(self, url, params={}, headers={}, data=None, json=None):
-		return await self.do_request(url, "POST", params, headers, data, json)
+		return await self.do_request(
+			url, "POST", params, headers, data, json, False)
 
 	async def head(self, url, params={}, headers={}):
-		return await self.do_request(url, "HEAD", params, headers, None, None)
+		return await self.do_request(
+			url, "HEAD", params, headers, None, None, False)
 
 	### Backend Http Methods  ####
 
@@ -68,18 +74,16 @@ class ApricotSession(object):
 					key = part.split('=')[0]
 					value = part.split('=')[1]
 					params[key] = value
-		final_params = ''
-		for pos, param in enumerate([x for x in params]):
-			value = params[param]
-			char = '?' if pos == 0 else '&'
-			final_params += char + param + "=" + value
-		url += final_params
+		params = "?" + urlencode(params)
+		if params != '?': url += params
 
 		# get url object
 		aUrl = ApricotUrl(url)
 
-		# build response 
-		respData = method.upper() + ' ' + aUrl.path + final_params + ' HTTP/1.1' + BREAK
+		# build response
+		fullpath = aUrl.path
+		if params != '?': fullpath += params
+		respData = method.upper() + ' ' + fullpath + ' HTTP/1.1' + BREAK
 
 		# get headers
 		_headers = REQUEST_HEADERS.copy()
@@ -110,7 +114,7 @@ class ApricotSession(object):
 
 		return respData, aUrl
 
-	async def do_request(self, url, method, params, headers, data, _json):
+	async def do_request(self, url, method, params, headers, data, _json, redirect):
 		''' perform the basis http request '''
 
 		# get byte data and ApricotUrl object
@@ -123,7 +127,11 @@ class ApricotSession(object):
 		client_coro = lambda: ApricotProtocol(self.loop, self, respData, client_id)
 
 		# create connection
-		coro = self.loop.create_connection(client_coro, aUrl.host, aUrl.port)
+		if aUrl.schema == 'https':
+			ctx  = ssl.create_default_context(self.ca_auth, capath=self.ca_path)
+		else:
+			ctx  = None
+		coro = self.loop.create_connection(client_coro, aUrl.host, aUrl.port, ssl=ctx)
 		task = self.loop.create_task(coro)
 
 		# wait for protocol to be initialized
@@ -137,6 +145,13 @@ class ApricotSession(object):
 		# build http response
 		response = ApricotHttpResponse(http_data, aUrl)
 		await response.feed_async()
+
+		# handle redirects
+		if redirect:
+			if str(response.status)[0] == '3':
+				new_url = response.headers["Location"]
+				headers["Refferer"] = new_url
+				response = await self.get(new_url, params, headers)
 
 		# return http response
 		return response

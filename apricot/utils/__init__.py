@@ -2,11 +2,13 @@
 #! python3
 
 import os
+import io
+import gzip
 import time
 import binascii
 from ._url import ApricotUrl
 from .. import __version__
-
+from urllib.parse import unquote, quote_plus as quote, urlencode
 try: import ujson as json
 except: import json
 
@@ -16,8 +18,12 @@ def generateID():
 async def generateID_async():
 	return generateID()
 
-BREAK   = "\r\n"
+
 CHARSET = "UTF-8"
+BREAK   = "\r\n"
+_BREAK    = BREAK.encode()
+CHUNKED   = b"Transfer-Encoding: chunked"
+CHUNK_END = b'0' + _BREAK + _BREAK
 
 CODES   = {
 	"100": "Continue",
@@ -75,6 +81,19 @@ REQUEST_HEADERS = {
 	"Accept-Encoding": "gzip, deflate, sdch",
 	"Accept-Language": "en-US,en;q=0.8,pt;q=0.6,es;q=0.4,ru;q=0.2,de;q=0.2,fr;q=0.2,id;q=0.2"
 }
+
+def gzipDecode(data):
+	''' decode gzip stream '''
+	if isinstance(data, bytes):
+		_stream = io.BytesIO
+	else:
+		_stream = io.StringIO
+	with gzip.GzipFile(fileobj=_stream(data)) as f:
+		try:
+			unzipped = f.read()
+		except:
+			unzipped = None
+	return unzipped
 
 def createHeaders(resp=b'', headers=None):
 	# set default headers

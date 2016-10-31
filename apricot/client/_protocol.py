@@ -2,11 +2,7 @@
 #! python3
 
 import asyncio
-from ..utils import generateID, BREAK
-
-_BREAK    = BREAK.encode()
-CHUNKED   = b"Transfer-Encoding: chunked"
-CHUNK_END = b'0' + _BREAK + _BREAK
+from ..utils import generateID, _BREAK, CHUNKED, CHUNK_END
 
 class ApricotProtocol(asyncio.Protocol):
 	''' UvLoop async TCP Protocol Server '''
@@ -52,12 +48,18 @@ class ApricotProtocol(asyncio.Protocol):
 		else:
 			if CHUNKED in self.data:
 				self.data += data
-
 				# exit on End Of Chunk Header
 				if data.endswith(CHUNK_END):
 					self.isReady.set()
 			else:
 				# Exit if not chunked stream
+				self.isReady.set()
+
+		# if not chunkable, exit
+		if CHUNKED not in self.data:
+			self.isReady.set()
+		else:
+			if CHUNKED in self.data and self.data.endswith(CHUNK_END):
 				self.isReady.set()
 
 		# If ready to exit, close connection
