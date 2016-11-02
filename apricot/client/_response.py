@@ -16,7 +16,7 @@ class ApricotHttpResponse(object):
 		self.version    = None
 		self.keep_alive = None
 		self._body      = None
-		self._text      = ''
+		self._text      = None
 		self._json      = None
 
 		# set null url info
@@ -58,11 +58,20 @@ class ApricotHttpResponse(object):
 			try:
 				if 'Content-Encoding' in self.headers:
 					if 'gzip' in self.headers['Content-Encoding']:
-						self._text = (gzipDecode(self._body)).decode(charset)
+						try:
+							self._text = (gzipDecode(self._body)).decode(charset)
+						except:
+							pass
 				if not isinstance(self._text, str):
-					self._text = self._body.decode(str(charset).lower())
+					try:
+						self._text = self._body.decode(str(charset).lower())
+					except:
+						pass
 			except:
-				self._text = self._body.decode('utf-8')
+				try:
+					self._text = self._body.decode('utf-8')
+				except:
+					pass
 
 			# attempt to get json info
 			if 'Content-Type' in self.headers:

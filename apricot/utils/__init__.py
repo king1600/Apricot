@@ -24,6 +24,8 @@ BREAK   = "\r\n"
 _BREAK    = BREAK.encode()
 CHUNKED   = b"Transfer-Encoding: chunked"
 CHUNK_END = b'0' + _BREAK + _BREAK
+CLEN      = "Content-Length"
+_CLEN     = CLEN.encode()
 
 CODES   = {
 	"100": "Continue",

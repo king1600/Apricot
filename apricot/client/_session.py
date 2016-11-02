@@ -67,14 +67,24 @@ class ApricotSession(object):
 		''' Build HTTP Request byte string from info '''
 		# add url parameters
 		if '?' in url:
-			extra_params = url.split('?')[1]
+			extra_params = '?'.join(url.split('?')[1:])
 			url = url.split('?')[0]
 			for part in extra_params.split('&'):
 				if part != '' or not part.isspace():
 					key = part.split('=')[0]
-					value = part.split('=')[1]
+					value = '='.join(part.split('=')[1:])
 					params[key] = value
-		params = "?" + urlencode(params)
+		_params = "?" + urlencode(params)
+		'''
+		for key in params:
+			value = params[key]
+			key = quote(key)
+			value = quote(value)
+			if _params == '?': add = key + "=" + value
+			else: add = '&' + key + "=" + value
+			_params += add
+		'''
+		params = _params
 		if params != '?': url += params
 
 		# get url object
@@ -150,7 +160,7 @@ class ApricotSession(object):
 		if redirect:
 			if str(response.status)[0] == '3':
 				new_url = response.headers["Location"]
-				headers["Refferer"] = new_url
+				headers["Referer"] = new_url
 				response = await self.get(new_url, params, headers)
 
 		# return http response
