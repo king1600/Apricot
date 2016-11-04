@@ -2,7 +2,7 @@
 #! python3
 
 import asyncio
-from ..utils import generateID, _BREAK, CHUNKED, CHUNK_END, _CLEN
+from ..utils import generateID, _BREAK, END_BREAK, CHUNKED, CHUNK_END, _CLEN
 
 class ApricotProtocol(asyncio.Protocol):
 	''' UvLoop async TCP Protocol Server '''
@@ -20,6 +20,7 @@ class ApricotProtocol(asyncio.Protocol):
 		self.bodyData    = b''
 		self.headerData  = b''
 		self.headerEnd   = False
+		self.onlyHeader  = False
 		self.length      = None
 		self.chunk_len   = 0
 
@@ -34,6 +35,8 @@ class ApricotProtocol(asyncio.Protocol):
 
 
 	def connection_made(self, transport):
+		""" On connection made """
+		
 		# get client info
 		self.transport   = transport
 		self.socket      = self.transport.get_extra_info('socket')
@@ -43,9 +46,10 @@ class ApricotProtocol(asyncio.Protocol):
 		self.transport.write(self.httpData)
 
 	def data_received(self, data):
+		""" Receive and process data """
+		chunked = False
 
 		# get the headers
-		chunked = False
 		if not self.headerEnd:
 			# set header data
 			self.data += data
@@ -70,6 +74,24 @@ class ApricotProtocol(asyncio.Protocol):
 					if self.headerData.endswith(_BREAK):
 						chunked = False
 						self.isReady.set()
+
+			# if header only, break
+			if self.httpData.startswith(b'HEAD'):
+				chunked = False
+				self.isReady.set()
+
+			# if redirect, break
+			resp_code = int(self.headerData.split(_BREAK)[0].split()[1])
+			if str(resp_code)[0] == '3':
+				chunked = False
+				self.isReady.set()
+
+			# if data already provided, break
+			if self.length is not None and self.length > 0:
+				self.bodyData = END_BREAK.join(self.headerData.split(END_BREAK)[1:])
+				if len(self.bodyData) == self.length:
+					chunked = False
+					self.isReady.set()
 
 		# chunking data after transfer encoding
 		else:

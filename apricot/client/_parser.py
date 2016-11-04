@@ -12,8 +12,12 @@ class AbstractParser(object):
 		self.headers     = {}
 		self.body        = b''
 
-	def on_header(self, name, value):
-		self.headers[name.decode()] = value.decode()
+	def on_header(self, name, _value):
+		key, value = name.decode(), _value.decode()
+		dup = [x for x in self.headers if x.startswith(key)]
+		if len(dup) > 0:
+			key += str(len(dup))
+		self.headers[key] = value
 
 	def on_body(self, data):
 		self.body += data

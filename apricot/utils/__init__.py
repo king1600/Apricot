@@ -8,7 +8,8 @@ import time
 import binascii
 from ._url import ApricotUrl
 from .. import __version__
-from urllib.parse import unquote, quote_plus as quote, urlencode
+from urllib.parse import unquote, quote_plus as quote
+from urllib.parse import urlencode, parse_qs, urlparse
 try: import ujson as json
 except: import json
 
@@ -19,9 +20,10 @@ async def generateID_async():
 	return generateID()
 
 
-CHARSET = "UTF-8"
-BREAK   = "\r\n"
+CHARSET   = "UTF-8"
+BREAK     = "\r\n"
 _BREAK    = BREAK.encode()
+END_BREAK = _BREAK + _BREAK
 CHUNKED   = b"Transfer-Encoding: chunked"
 CHUNK_END = b'0' + _BREAK + _BREAK
 CLEN      = "Content-Length"
@@ -70,7 +72,6 @@ CODES   = {
 	"505": "Http Version Not Supported"
 }
 
-
 RESPONSE_HEADERS = {
 	"Server"       : "Apricot-HTTP-Server/" + __version__,
 	"Connection"   : "close"
@@ -96,6 +97,19 @@ def gzipDecode(data):
 		except:
 			unzipped = None
 	return unzipped
+
+def createParams(params):
+	if params != {} or params is not None:
+		p = "?"
+		for key in params:
+			value = params[key]
+			if not value.startswith('http'):
+				value = quote(value)
+			if p == '?': p += key + "=" + value
+			else: p += "&" + key + "=" + value
+		return p
+	else:
+		return ''
 
 def createHeaders(resp=b'', headers=None):
 	# set default headers

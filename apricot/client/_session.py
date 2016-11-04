@@ -4,11 +4,13 @@
 import ssl
 import certifi
 import asyncio
+from datetime import datetime, timedelta
 from ._request import ApricotRequest
 from ._protocol import ApricotProtocol
 from ._response import ApricotHttpResponse
 from ..utils import ApricotUrl, BREAK, REQUEST_HEADERS
 from ..utils import generateID_async, json, urlencode
+from ..utils import createParams
 
 class ApricotSession(object):
 	''' Apricot Request Session '''
@@ -19,8 +21,12 @@ class ApricotSession(object):
 		self.conn_ready  = {} # hold Events to check protocol ready by uuid
 		self.isClosed    = False
 
+		# SSL Authentication
 		self.ca_path = certifi.where()
 		self.ca_auth = ssl.Purpose.CLIENT_AUTH
+
+		# cookie handling
+		self.cookies = {}
 
 	def __del__(self):
 		self.close()
@@ -63,36 +69,140 @@ class ApricotSession(object):
 
 	### Backend Http Methods  ####
 
+	async def cookie_handle(self, response):
+		""" Add cookies to session """
+		headers = response.headers
+
+		for head in headers:
+			# set cookie
+			if str(head).lower().startswith('set-cookie'):
+				# extract parts
+				cookie       = headers[head]
+				cookie_info  = {}
+				parts        = cookie.split("; ")
+				cookie_key   = ''
+				cookie_value = None
+
+				# assign info, key, and value
+				for pos, part in enumerate(parts):
+					key   = part.split("=")[0]
+					value = '='.join(part.split("=")[1:])
+					if pos != 0:
+						cookie_info[key] = value
+					else:
+						cookie_key   = key
+						cookie_value = value
+
+				# handle parts
+				for part in cookie_info:
+					cookie_h  = str(part).lower()
+					new_value = None
+
+					# convert expire date & python datetime convert
+					if cookie_h == "expires":
+						date   = cookie_info[part]
+						date_p = date.split()
+						if '-' in date_p[1]:
+							date_parts = date_p[1].split('-')
+							if len(date_parts[-1]) <= 2:
+								pref = str(datetime.now().year)[:2]
+								date_parts[-1] = pref + date_parts[-1]
+							date_rest = date_p[2:]
+							date_final = [date_p[0]] + date_parts + date_rest
+							date = ' '.join(date_final)
+						new_value = datetime.strptime(date, "%a, %d %b %Y %H:%M:%S %Z")
+
+					# convert max age date
+					elif cookie_h == "max-age":
+						seconds   = int(cookie_info[part])
+						new_value = datetime.now() + timedelta(seconds=seconds)
+
+					# no other real conversion needed
+					else:
+						pass
+
+					# set converted python value if necessary
+					if new_value is not None:
+						cookie_info[part] = new_value
+
+				# create cookie entry for session
+				host = response.host
+				if host not in self.cookies:
+					self.cookies[host] = {}
+				info = {}
+				info['value'] = cookie_value
+				for part in cookie_info:
+					if part != 'value':
+						info[part] = cookie_info[part]
+				if 'Path' not in info: info['Path'] = "/"
+
+				# add to session coookies
+				self.cookies[host][cookie_key] = info
+
+	async def set_cookies(self, respData):
+		""" Add cookies to response data from session """
+
+		# get info
+		request = ApricotRequest((respData + BREAK).encode())
+		await request.build_async()
+		host = str(request.host)
+		path = request.path
+		path = str(path) if path is not None else "/"
+		if isinstance(path, bytes): path = path.decode()
+		path = path.split("?")[0]
+
+		# add cookies
+		if host in self.cookies:
+			info = self.cookies[host]
+			
+			# remove expired cookies
+			for key in info:
+				data   = info[key]
+				remove = False
+				if 'Expires' in data:
+					if data['Expires'] < datetime.now():
+						remove = True
+				if 'Max-Age' in data:
+					if data['Max-Age'] < datetime.now():
+						remove = True
+				if remove:
+					info.pop(key, None)
+
+			# add cookies to response data
+			cookie_str = None
+			for cookie in info:
+				# only add if valid path
+				cookie_path = info[cookie]['Path']
+				value       = info[cookie]['value']
+				if path == cookie_path or cookie_path == "/":
+					if cookie_str == None:
+						cookie_str = "Cookie:"
+					cookie_str += " " + cookie + "=" + value + ";"
+			if cookie_str is not None:
+				cookie_str += BREAK
+				respData += cookie_str
+
+		# return new response data if changes
+		return respData
+						
+
 	async def buildHttpRequest(self, url, method, params, headers, data, _json):
 		''' Build HTTP Request byte string from info '''
 		# add url parameters
+		param_str = createParams(params)
 		if '?' in url:
-			extra_params = '?'.join(url.split('?')[1:])
-			url = url.split('?')[0]
-			for part in extra_params.split('&'):
-				if part != '' or not part.isspace():
-					key = part.split('=')[0]
-					value = '='.join(part.split('=')[1:])
-					params[key] = value
-		_params = "?" + urlencode(params)
-		'''
-		for key in params:
-			value = params[key]
-			key = quote(key)
-			value = quote(value)
-			if _params == '?': add = key + "=" + value
-			else: add = '&' + key + "=" + value
-			_params += add
-		'''
-		params = _params
-		if params != '?': url += params
+			param_str = param_str[1:]
+			if param_str == '?': param_str = ''
+			url += '&'
+		if param_str == '?': param_str = ''
+		url += param_str
 
 		# get url object
 		aUrl = ApricotUrl(url)
 
 		# build response
 		fullpath = aUrl.path
-		if params != '?': fullpath += params
+		if '?' in url: fullpath += "?" + '?'.join(url.split('?')[1:])
 		respData = method.upper() + ' ' + fullpath + ' HTTP/1.1' + BREAK
 
 		# get headers
@@ -114,10 +224,18 @@ class ApricotSession(object):
 		if not hasData and _json is not None:
 			data = json.dumps(_json)
 			DATA = data.encode()
+		if DATA != b'':
+			_headers['Content-Length'] = str(len(DATA))
+
 
 		# build byte string
 		for header in _headers:
 			respData += header + ": " + _headers[header] + BREAK
+		try:
+			newData = await self.set_cookies(respData)
+			respData = newData
+		except Exception as e:
+			pass
 		respData += BREAK
 		respData = respData.encode('utf-8')
 		respData += DATA
@@ -156,11 +274,19 @@ class ApricotSession(object):
 		response = ApricotHttpResponse(http_data, aUrl)
 		await response.feed_async()
 
+		# save cookies
+		await self.cookie_handle(response)
+
 		# handle redirects
 		if redirect:
 			if str(response.status)[0] == '3':
 				new_url = response.headers["Location"]
-				headers["Referer"] = new_url
+				if new_url.startswith('/'):
+					main    = url.split('://')[1].split("/")[0]
+					schema  = url.split('://')[0] + "://"
+					new_url = schema + main + new_url
+				if 'Referer' not in headers:
+					headers["Referer"] = new_url
 				response = await self.get(new_url, params, headers)
 
 		# return http response

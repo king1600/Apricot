@@ -26,12 +26,12 @@ class ApricotRequest(object):
 	def build(self):
 		self.parser = ApricotParser('request')
 		self.parser.feed(self.data)
-		del self.data
-
 		self.set_attributes()
 
 	async def build_async(self):
-		self.build()
+		self.parser = ApricotParser('request')
+		await self.parser.feed_async(self.data)
+		self.set_attributes()
 
 	async def read():
 		if self.parser.body not in [b'', None]:
