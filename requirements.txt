@@ -1,4 +1,0 @@
-ujson
-uvloop
-certifi
-httptools
