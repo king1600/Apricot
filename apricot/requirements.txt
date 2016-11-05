@@ -2,3 +2,4 @@ ujson
 uvloop
 certifi
 httptools
+lxml
