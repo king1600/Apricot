@@ -117,7 +117,7 @@ class ApricotResponse(object):
 			self.content_type = 'text/plain'
 			self.charset      = 'utf-8'
 			self.using        = 'text'
-		else:
+		if self.content_type == None:
 			self.content_type = 'application/html'
 
 		if self.content_type is not None:

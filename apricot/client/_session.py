@@ -79,12 +79,13 @@ class ApricotSession(object):
 				# extract parts
 				cookie       = headers[head]
 				cookie_info  = {}
-				parts        = cookie.split("; ")
+				parts        = cookie.split(";")
 				cookie_key   = ''
 				cookie_value = None
 
 				# assign info, key, and value
 				for pos, part in enumerate(parts):
+					if part.startswith(' '): part = part[1:]
 					key   = part.split("=")[0]
 					value = '='.join(part.split("=")[1:])
 					if pos != 0:
@@ -179,6 +180,8 @@ class ApricotSession(object):
 						cookie_str = "Cookie:"
 					cookie_str += " " + cookie + "=" + value + ";"
 			if cookie_str is not None:
+				if cookie_str.endswith(';'):
+					cookie_str = cookie_str[:-1]
 				cookie_str += BREAK
 				respData += cookie_str
 

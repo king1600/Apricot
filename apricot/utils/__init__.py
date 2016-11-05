@@ -139,6 +139,7 @@ def createResponse(response):
 	''' Create an HTTP Response byte string from ApricotResponse '''
 	resp = makeResponse(response.status)
 	resp = createHeaders(resp, response.headers)
+	if isinstance(resp, str): resp = resp.encode()
 
 	# add response data
 	if response.using != 'body':
@@ -147,7 +148,9 @@ def createResponse(response):
 		if response.body is not None:
 			if response.headers is not None:
 				if 'Content-Length' in response.headers:
-					resp += response.body
+					body = response.body
+					body = body if isinstance(body, bytes) else body.encode()
+					resp += body
 
 	# encode to correct charset
 	resp = resp.decode()
