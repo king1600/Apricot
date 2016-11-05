@@ -48,8 +48,12 @@ class ApricotServer(object):
 		if self.canRun:
 
 			# create server coroutine
+			# modified to work on unix server
 			coro = asyncio.start_server(self.accept_client, 
-				self.host, self.port, loop=self.loop)
+				port=self.port, host=self.host, loop=self.loop,
+				family=socket.AF_INET, flags=0,
+				reuse_port=True, reuse_address=True
+				)
 
 			# get socket server from coroutine
 			self.server = self.loop.run_until_complete(coro)
