@@ -106,17 +106,18 @@ class ApricotResponse(object):
 		self.text         = text
 		self.using        = 'body'
 
-		header_keys = [x.lower() for x in self.headers]
-
 		if self.body is not None:
 			self.headers['Content-Length'] = len(self.body)
 		if self.text is not None:
 			self.headers['Content-Length'] = len(self.text)
-			self.content_type = 'text/plain'
+			if self.content_type == None:
+				self.content_type = 'text/plain'
 			self.charset      = 'utf-8'
 			self.using        = 'text'
 		if self.content_type == None:
 			self.content_type = 'application/html'
+
+		header_keys = [x.lower() for x in self.headers]
 
 		if self.content_type is not None:
 			if 'content-type' not in header_keys:
