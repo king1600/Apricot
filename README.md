@@ -1,37 +1,45 @@
-## Welcome to GitHub Pages
+## Usage
 
-You can use the [editor on GitHub](https://github.com/king1600/Apricot/edit/master/README.md) to maintain and preview the content for your website in Markdown files.
+### Server
+```python
+import json
+from apricot.server import ApricotServer
+from apricot.client import ApricotResponse
 
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
+async def index(req):
+  return ApricotResponse(status=200, text="Hello world")
 
-### Markdown
+async def post(req):
+  data = req.headers
+  if req.has_body:
+    data['X-Form-Data'] = req.body
+  data['X-Url-Params'] = json.dumps(req.query_dict)
+  return ApricotResponse(status=200, text=json.dumps(data))
 
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
+if __name__ == "__main__":
+  server = ApricotServer(port=8080)
+  
+  server.router.add_get('/', index)
+  server.router.add_post('/post', post)
+  
+  try:
+    server.wait_until_stopped()
+  except KeyboardInterrupt:
+    pass
+  except Exception as err:
+    print("Error:", str(err))
+  server.stop()
 ```
 
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
+### Client
 
-### Jekyll Themes
+```python
+from apricot.client import ApricotSession
 
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/king1600/Apricot/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
+...
 
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://help.github.com/categories/github-pages-basics/) or [contact support](https://github.com/contact) and we’ll help you sort it out.
+async with ApricotSession() as sess:
+  resp = await sess.get("https://google.com/humans.txt")
+  print(resp.status)
+  print(await resp.text())
+```
